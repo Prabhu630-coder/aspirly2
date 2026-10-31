@@ -1,0 +1,1 @@
+document.addEventListener('DOMContentLoaded',()=>{const r=document.getElementById('range'),o=document.getElementById('hours');if(r&&o)r.addEventListener('input',()=>o.textContent=r.value);});

@@ -1,0 +1,18 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{% block title %}Aspirly{% endblock %} · Aspirly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}"></head><body>
+{% if current_user %}<div class="shell"><aside class="sidebar"><a class="brand" href="{{ url_for('index') if current_user.role=='student' else url_for('company_dashboard') }}"><b>A</b><span>aspirly<small>ASPIRATIONS TURNED INTO ACTIONS</small></span></a>
+<div class="navlabel">WORKSPACE</div><nav>{% if current_user.role=='student' %}
+<a class="{{'active' if request.endpoint=='index' else ''}}" href="{{url_for('index')}}">◫ <span>Overview</span></a>
+<a class="{{'active' if request.endpoint=='profile' else ''}}" href="{{url_for('profile')}}">◎ <span>My profile</span></a>
+<a class="{{'active' if request.endpoint=='roadmap' else ''}}" href="{{url_for('roadmap')}}">↗ <span>Learning roadmap</span></a>
+<a class="{{'active' if request.endpoint=='opportunities' else ''}}" href="{{url_for('opportunities')}}">✳ <span>Opportunities</span></a>
+<a class="{{'active' if request.endpoint=='internship_notifications' else ''}}" href="{{url_for('internship_notifications')}}">🔔 <span>Internship alerts</span></a>
+<a class="{{'active' if request.endpoint=='asperlyai' else ''}}" href="{{url_for('asperlyai')}}">✦ <span>AsperlyAI</span></a>
+{% else %}<a class="{{'active' if request.endpoint=='company_dashboard' else ''}}" href="{{url_for('company_dashboard')}}">▦ <span>Company dashboard</span></a>{% endif %}
+<a class="{{'active' if request.endpoint=='settings' else ''}}" href="{{url_for('settings')}}">⚙ <span>Settings</span></a>
+<a href="{{url_for('logout')}}">↪ <span>Log out</span></a></nav><div class="sidefoot"><b>{{current_user.role[0]|upper}}</b><span><strong>{{current_user.email}}</strong><small>{{current_user.role|title}} account</small></span></div></aside>
+<main class="main"><header class="topbar"><div><small>YOUR PERSONAL GROWTH SPACE</small><strong>{% block page_title %}Aspirly{% endblock %}</strong></div><span class="topnote">● &nbsp;{{current_user.role|title}} workspace</span></header>
+{% with messages=get_flashed_messages(with_categories=true) %}{% for c,m in messages %}<div class="flash {{c}}">{{m}}</div>{% endfor %}{% endwith %}
+{% block content %}{% endblock %}<footer>ASPIRLY · Aspirations turned into actions <span>Recommendations are guidance, not guaranteed outcomes.</span></footer></main></div>
+{% else %}{% with messages=get_flashed_messages(with_categories=true) %}{% for c,m in messages %}<div class="authflash {{c}}">{{m}}</div>{% endfor %}{% endwith %}{% block auth_content %}{% endblock %}{% endif %}
+<script src="{{url_for('static',filename='app.js')}}"></script></body></html>

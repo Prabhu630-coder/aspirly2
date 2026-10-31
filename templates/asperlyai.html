@@ -1,0 +1,42 @@
+{% extends "base.html" %}{% block title %}AspirlyAI{% endblock %}{% block page_title %}Your AI career companion{% endblock %}{% block content %}
+<section class="aihero"><div><small class="eyebrow">AI-POWERED STUDENT ASSISTANT</small><h1>Meet <em>AspirlyAI.</em></h1><p>Personalized guidance for your learning roadmap, skills, projects, internships, resume and interview preparation.</p></div><div class="aibadge"><b>A</b><span>ASP</span><small>AI</small></div></section>
+<section class="aichat panel"><div class="aihead"><div><small class="eyebrow">ASPIRLYAI</small><h2>Ask anything about your career journey</h2></div><span class="aimodel">HF reasoning model + live web research</span></div><div id="aiMessages" class="aimessages"><div class="aimsg bot"><b>AspirlyAI</b><p>Hi {{s.name or 'there'}}! I can help with your {{s.target_role}} journey. Ask me about your next skill, roadmap, projects, internships, resume, GitHub or interviews.</p></div></div><div class="aisuggestions"><button type="button" data-q="What should I learn next?">What should I learn next?</button><button type="button" data-q="What are my skill gaps?">My skill gaps</button><button type="button" data-q="How should I prepare for an internship?">Internship prep</button><button type="button" data-q="How should I prepare for an interview?">Interview prep</button></div><form id="aiForm" class="aiform"><input id="aiInput" maxlength="1000" autocomplete="off" placeholder="Ask AspirlyAI…" required><button class="btn dark" type="submit">Send ↗</button></form><small class="aihint">AspirlyAI plans research, retrieves public-web evidence, reasons over it with an open-weight model, and cites the sources it used. Current facts should still be verified at the original source.</small></section>
+<script>
+(function(){
+const box=document.getElementById('aiMessages'),form=document.getElementById('aiForm'),input=document.getElementById('aiInput');
+const history=[];
+function add(role,text,sources=[]){
+  const d=document.createElement('div'); d.className='aimsg '+role;
+  d.innerHTML='<b>'+(role==='bot'?'AspirlyAI':'You')+'</b><p></p>';
+  d.querySelector('p').textContent=text;
+  if(role==='bot' && sources.length){
+    const src=document.createElement('div'); src.className='aisources';
+    const label=document.createElement('small'); label.textContent='Research sources'; src.appendChild(label);
+    sources.slice(0,6).forEach((x,i)=>{
+      const a=document.createElement('a'); a.href=x.url; a.target='_blank'; a.rel='noopener noreferrer';
+      a.textContent='['+(i+1)+'] '+(x.title||x.url); src.appendChild(a);
+    });
+    d.appendChild(src);
+  }
+  box.appendChild(d); box.scrollTop=box.scrollHeight;
+}
+async function ask(text){
+  text=text.trim(); if(!text)return;
+  add('user',text); history.push({role:'user',content:text});
+  input.value=''; input.disabled=true;
+  try{
+    const r=await fetch('{{url_for("asperlyai_api")}}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,history:history.slice(-8)})});
+    const data=await r.json().catch(()=>({answer:'The AI server returned an invalid response.'}));
+    if(!r.ok) throw new Error(data.answer||('HTTP '+r.status));
+    add('bot',data.answer||'AspirlyAI returned no answer.',data.sources||[]);
+    history.push({role:'assistant',content:data.answer||''});
+  }catch(e){
+    add('bot','AspirlyAI could not complete the live research request. Check the server AI configuration/logs rather than accepting a made-up answer.');
+  }finally{input.disabled=false;input.focus();}
+}
+form.addEventListener('submit',e=>{e.preventDefault();ask(input.value)});
+document.querySelectorAll('.aisuggestions button').forEach(b=>b.addEventListener('click',()=>ask(b.dataset.q)));
+input.focus();
+})();
+</script>
+{% endblock %}
