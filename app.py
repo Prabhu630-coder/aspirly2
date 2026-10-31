@@ -530,7 +530,7 @@ def _fetch_url(url, timeout=8):
     )
 
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        raw=r.read(120000)
+        raw=r.read(60000)
         charset=r.headers.get_content_charset() or "utf-8"
         return raw.decode(charset, errors="ignore")
 
@@ -540,7 +540,7 @@ _WEB_CACHE={}
 
 
 
-def _duck_search(query,max_results=6):
+def _duck_search(query,max_results=3):
 
     q=" ".join((query or "").split())[:400]
 
@@ -560,7 +560,7 @@ def _duck_search(query,max_results=6):
 
         seen.add(url)
 
-        try: page=_html_text(_fetch_url(url,timeout=7),7000)
+        try: page=_html_text(_fetch_url(url,timeout=7),3500)
 
         except Exception: page=""
 
@@ -574,7 +574,7 @@ def _duck_search(query,max_results=6):
 
 
 
-def aspirly_web_search(query, max_results=6):
+def aspirly_web_search(query, max_results=3):
 
     """Real public-web retrieval. Tavily is preferred; DDG is a no-key fallback.
 
@@ -622,7 +622,13 @@ def aspirly_web_search(query, max_results=6):
 
         if len(unique)>=max_results: break
 
+    unique=unique[:3]
+
     _WEB_CACHE[key]=(now,unique)
+    if len(_WEB_CACHE)>20:
+        oldest=sorted(_WEB_CACHE.items(), key=lambda item:item[1][0])[:len(_WEB_CACHE)-20]
+        for old_key,_ in oldest:
+            _WEB_CACHE.pop(old_key,None)
 
     return unique
 
@@ -935,7 +941,7 @@ def _research_agent(question, context, history=None):
 
     for q in queries:
 
-        sources.extend(aspirly_web_search(q,5))
+        sources.extend(aspirly_web_search(q,3))
 
     unique=[]; seen=set()
 
@@ -947,11 +953,11 @@ def _research_agent(question, context, history=None):
 
         seen.add(u); unique.append(x)
 
-    sources=unique[:10]
+    sources=unique[:5]
 
-    evidence="\n\n".join(f"SOURCE [{i}]\nTITLE: {x['title']}\nURL: {x['url']}\nCONTENT: {x['text'][:6000]}" for i,x in enumerate(sources,1))
+    evidence="\n\n".join(f"SOURCE [{i}]\nTITLE: {x['title']}\nURL: {x['url']}\nCONTENT: {x['text'][:2500]}" for i,x in enumerate(sources,1))
 
-    conversation=history[-8:] if isinstance(history,list) else []
+    conversation=history[-4:] if isinstance(history,list) else []
 
     prompt=f"""You are AspirlyAI, a real AI career and research agent. Analyze the user's question using the student's profile, recent conversation, and retrieved public-web evidence.
 
