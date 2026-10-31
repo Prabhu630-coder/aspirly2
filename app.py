@@ -28,9 +28,6 @@ from flask_sqlalchemy import SQLAlchemy
 
 from sqlalchemy import inspect, text
 
-from sklearn.feature_extraction.text import TfidfVectorizer
-
-from sklearn.metrics.pairwise import cosine_similarity
 
 
 
@@ -448,9 +445,6 @@ ASPERLYAI_KNOWLEDGE = [
 
 ]
 
-ASPERLYAI_VECTORIZER = TfidfVectorizer(lowercase=True, stop_words="english", ngram_range=(1, 2))
-
-ASPERLYAI_MATRIX = ASPERLYAI_VECTORIZER.fit_transform([q for q, _ in ASPERLYAI_KNOWLEDGE])
 
 
 
@@ -520,7 +514,7 @@ def _html_text(html, limit=7000):
 
 
 
-def _fetch_url(url, timeout=8):
+def _fetch_url(url, timeout=6, max_bytes=24000):
     req=urllib.request.Request(
         url,
         headers={
@@ -530,7 +524,7 @@ def _fetch_url(url, timeout=8):
     )
 
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        raw=r.read(60000)
+        raw=r.read(max_bytes)
         charset=r.headers.get_content_charset() or "utf-8"
         return raw.decode(charset, errors="ignore")
 
@@ -540,7 +534,7 @@ _WEB_CACHE={}
 
 
 
-def _duck_search(query,max_results=3):
+def _duck_search(query,max_results=2):
 
     q=" ".join((query or "").split())[:400]
 
@@ -560,7 +554,7 @@ def _duck_search(query,max_results=3):
 
         seen.add(url)
 
-        try: page=_html_text(_fetch_url(url,timeout=7),3500)
+        try: page=_html_text(_fetch_url(url,timeout=5,max_bytes=18000),1800)
 
         except Exception: page=""
 
@@ -574,7 +568,7 @@ def _duck_search(query,max_results=3):
 
 
 
-def aspirly_web_search(query, max_results=3):
+def aspirly_web_search(query, max_results=2):
 
     """Real public-web retrieval. Tavily is preferred; DDG is a no-key fallback.
 
@@ -592,7 +586,7 @@ def aspirly_web_search(query, max_results=3):
 
     cached=_WEB_CACHE.get(key)
 
-    if cached and now-cached[0] < 300: return cached[1]
+    if cached and now-cached[0] < 600: return cached[1]
 
     sources=[]
 
@@ -602,7 +596,7 @@ def aspirly_web_search(query, max_results=3):
 
         # synthesis model is provided by Gemini via GEMINI_API_KEY.
 
-        sources=_duck_search(q,max_results)
+        sources=_duck_search(q,min(max_results,2))
 
     except Exception as exc:
 
@@ -622,11 +616,11 @@ def aspirly_web_search(query, max_results=3):
 
         if len(unique)>=max_results: break
 
-    unique=unique[:3]
+    unique=unique[:2]
 
     _WEB_CACHE[key]=(now,unique)
-    if len(_WEB_CACHE)>20:
-        oldest=sorted(_WEB_CACHE.items(), key=lambda item:item[1][0])[:len(_WEB_CACHE)-20]
+    if len(_WEB_CACHE)>10:
+        oldest=sorted(_WEB_CACHE.items(), key=lambda item:item[1][0])[:len(_WEB_CACHE)-10]
         for old_key,_ in oldest:
             _WEB_CACHE.pop(old_key,None)
 
@@ -690,7 +684,7 @@ def _json_from_model(text):
 
     except Exception: pass
 
-    m=re.search(r"**{**.***}**",text,re.S)
+    m=re.search(r"\{.*\}",text,re.S)
 
     if m:
 
@@ -919,7 +913,7 @@ def _research_queries(question, context):
 
         queries.append(f"{q} official")
 
-    return list(dict.fromkeys(x for x in queries if x.strip()))[:3]
+    return list(dict.fromkeys(x for x in queries if x.strip()))[:2]
 
 
 
@@ -941,7 +935,7 @@ def _research_agent(question, context, history=None):
 
     for q in queries:
 
-        sources.extend(aspirly_web_search(q,3))
+        sources.extend(aspirly_web_search(q,2))
 
     unique=[]; seen=set()
 
@@ -953,11 +947,12 @@ def _research_agent(question, context, history=None):
 
         seen.add(u); unique.append(x)
 
-    sources=unique[:5]
+    sources=unique[:3]
 
-    evidence="\n\n".join(f"SOURCE [{i}]\nTITLE: {x['title']}\nURL: {x['url']}\nCONTENT: {x['text'][:2500]}" for i,x in enumerate(sources,1))
+    evidence="\n\n".join(f"SOURCE [{i}]\nTITLE: {x['title']}\nURL: {x['url']}\nCONTENT: {x['text'][:1400]}" for i,x in enumerate(sources,1))
 
-    conversation=history[-4:] if isinstance(history,list) else []
+    conversation=history[-2:] if isinstance(history,list) else []
+    conversation=[{k: str(v)[:1200] for k,v in item.items() if k in ("role","content")} for item in conversation if isinstance(item,dict)]
 
     prompt=f"""You are AspirlyAI, a real AI career and research agent. Analyze the user's question using the student's profile, recent conversation, and retrieved public-web evidence.
 
@@ -1171,7 +1166,7 @@ def _fetch_official(url):
 
     with urllib.request.urlopen(req,timeout=12) as r:
 
-        return r.read().decode("utf-8","ignore")
+        return r.read(80000).decode("utf-8","ignore")
 
 
 
@@ -1193,7 +1188,7 @@ def sync_official_internships(force=False):
 
     added=0; failed=[]
 
-    seen_urls={o.source_url for o in Opportunity.query.filter_by(is_sample=False).all()}
+    seen_urls={row[0] for row in Opportunity.query.filter_by(is_sample=False).with_entities(Opportunity.source_url).limit(1000).all()}
 
     for src in OFFICIAL_INTERNSHIP_SOURCES:
 
@@ -1265,9 +1260,9 @@ def create_internship_notifications(s):
 
     """Create in-app alerts only for live internships that match profile skills."""
 
-    live=Opportunity.query.filter_by(kind="Internship",is_sample=False).order_by(Opportunity.id.desc()).all()
+    live=Opportunity.query.filter_by(kind="Internship",is_sample=False).order_by(Opportunity.id.desc()).limit(300).all()
 
-    existing={n.opportunity_id for n in InternshipNotification.query.filter_by(student_id=s.id).all()}
+    existing={row[0] for row in InternshipNotification.query.filter_by(student_id=s.id).with_entities(InternshipNotification.opportunity_id).all()}
 
     created=0
 
@@ -1631,7 +1626,10 @@ def asperlyai_api():
 
         if not isinstance(history,list): history=[]
 
-        result=aspirlyai_answer(message, student_record(), history=history[-8:])
+        history=history[-4:]
+        history=[{"role":str(x.get("role",""))[:20],"content":str(x.get("content",""))[:1200]} for x in history if isinstance(x,dict)]
+
+        result=aspirlyai_answer(message, student_record(), history=history)
 
         return {"answer":result["answer"],"sources":result.get("sources",[]),"assistant":"AspirlyAI","web_research":result.get("researched",False)}
 
@@ -1673,7 +1671,7 @@ def index():
 
     tasks=RoadmapTask.query.filter_by(student_id=s.id).order_by(RoadmapTask.order_no, RoadmapTask.id).all()
 
-    opps=Opportunity.query.all()
+    opps=Opportunity.query.order_by(Opportunity.id.desc()).limit(300).all()
 
     matches=[(o,*score_for(s,o)) for o in opps]; matches.sort(key=lambda x:x[1],reverse=True)
 
@@ -1881,7 +1879,7 @@ def opportunities():
 
     results=[]
 
-    for o in q.all():
+    for o in q.order_by(Opportunity.id.desc()).limit(300).all():
 
         score,matched,missing,why=score_for(s,o)
 
@@ -2029,4 +2027,4 @@ with app.app_context():
 
 if __name__=="__main__":
 
-    app.run(debug=True)
+    app.run(debug=os.environ.get("FLASK_DEBUG", "0") == "1", use_reloader=False)
